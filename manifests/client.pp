@@ -53,7 +53,7 @@ class simp_openldap::client (
   Array[String[1]]                             $tls_cipher_suite      = simplib::lookup('simp_options::openssl::cipher_suite', { 'default_value' => ['DEFAULT','!MEDIUM'] }),
   Enum['none','peer','all']                    $tls_crlcheck          = 'none',
   Enum['never','searching','finding','always'] $deref                 = 'never',
-  Enum['never','allow','try','demand','hard']  $tls_reqcert           = 'allow'
+  Enum['never','allow','try','demand','hard']  $tls_reqcert           = 'demand'
 ) inherits ::simp_openldap {
 
   if $strip_128_bit_ciphers {
