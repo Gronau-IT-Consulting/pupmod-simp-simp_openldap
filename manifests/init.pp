@@ -104,10 +104,20 @@ class simp_openldap (
   contain '::simp_openldap::client'
 
   if $pki {
+    if $facts['os']['name'] in ['RedHat','CentOS'] {
+      $_group = 'ldap'
+    }
+    elsif $facts['os']['name'] in ['Debian','Ubuntu'] {
+      $_group = 'ssl-cert'
+    }
+    else {
+      fail("OS '${facts['os']['name']}' not supported by '${module_name}'")
+    }
+
     pki::copy { 'openldap':
       source => $app_pki_external_source,
       pki    => $pki,
-      group  => 'ldap'
+      group  => $_group
     }
   }
 }

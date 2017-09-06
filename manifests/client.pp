@@ -50,29 +50,58 @@ class simp_openldap::client (
   Stdlib::Absolutepath                         $app_pki_key           = $::simp_openldap::app_pki_key,
   Optional[Stdlib::Absolutepath]               $app_pki_crl           = $::simp_openldap::app_pki_crl,
   Boolean                                      $strip_128_bit_ciphers = true,
-  Array[String[1]]                             $tls_cipher_suite      = simplib::lookup('simp_options::openssl::cipher_suite', { 'default_value' => ['DEFAULT','!MEDIUM'] }),
+  Optional[Array[String[1]]]                   $tls_cipher_suite      = undef,
   Enum['none','peer','all']                    $tls_crlcheck          = 'none',
   Enum['never','searching','finding','always'] $deref                 = 'never',
   Enum['never','allow','try','demand','hard']  $tls_reqcert           = 'demand'
 ) inherits ::simp_openldap {
+
+  if $facts['os']['name'] in ['RedHat','CentOS'] {
+    $_ldap_conf = '/etc/openldap/ldap.conf'
+    $_ldap_client_package = "openldap-clients.${facts['hardwaremodel']}"
+    $_ldap_nss_package = 'nss-pam-ldapd'
+
+    if $tls_cipher_suite {
+      $_tmp_tls_cipher_suite = $tls_cipher_suite
+    }
+    else {
+      $_tmp_tls_cipher_suite = simplib::lookup('simp_options::openssl::cipher_suite', { 'default_value' => ['DEFAULT','!MEDIUM'] })
+    }
+  }
+  elsif $facts['os']['name'] in ['Debian','Ubuntu'] {
+    $_ldap_conf = '/etc/ldap/ldap.conf'
+    $_ldap_client_package = 'ldap-utils'
+    $_ldap_nss_package = ['libnss-ldap', 'libpam-ldap']
+
+    # Debian/Ubuntu use GnuTLS so we require a GnuTLS compatible cipher suite list
+    if $tls_cipher_suite {
+      $_tmp_tls_cipher_suite = $tls_cipher_suite
+    }
+    else {
+      $_tmp_tls_cipher_suite = simplib::lookup('simp_options::gnutls::cipher_suite', { 'default_value' => ['SECURE256','SECURE128'] })
+    }
+  }
+  else {
+    fail("OS '${facts['os']['name']}' not supported by '${module_name}'")
+  }
 
   if $strip_128_bit_ciphers {
     # This is here due to a bug in the LDAP client library on EL6 that will set
     # the SSF to 128 when connecting over StartTLS if there are *any* 128-bit
     # ciphers in the list.
     if $facts['os']['name'] in ['RedHat','CentOS'] and (versioncmp($facts['os']['release']['major'],'7') < 0) {
-      $_tmp_suite = flatten($tls_cipher_suite.map |$cipher| { split($cipher,':') })
+      $_tmp_suite = flatten($_tmp_tls_cipher_suite.map |$cipher| { split($cipher,':') })
       $_tls_cipher_suite = $_tmp_suite.filter |$cipher| { $cipher !~ Pattern[/128/] }
     }
     else {
-      $_tls_cipher_suite = $tls_cipher_suite
+      $_tls_cipher_suite = $_tmp_tls_cipher_suite
     }
   }
   else {
-    $_tls_cipher_suite = $tls_cipher_suite
+    $_tls_cipher_suite = $_tmp_tls_cipher_suite
   }
 
-  file { '/etc/openldap/ldap.conf':
+  file { $_ldap_conf:
     owner   => 'root',
     group   => 'root',
     mode    => '0644',
@@ -88,6 +117,6 @@ class simp_openldap::client (
     content => template("${module_name}/ldaprc.erb")
   }
 
-  package { "openldap-clients.${facts['hardwaremodel']}": ensure => 'latest' }
-  package { 'nss-pam-ldapd': ensure => 'latest' }
+  package { $_ldap_client_package: ensure => 'latest' }
+  package { $_ldap_nss_package: ensure => 'latest' }
 }
